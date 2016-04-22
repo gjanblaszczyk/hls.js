@@ -1677,7 +1677,7 @@ var StreamController = (function (_EventHandler) {
 
     this.config = hls.config;
     this.audioCodecSwap = false;
-    this.ticks = 0;
+    this.ticks = this.stalledInBuffered = 0;
     this.ontick = this.tick.bind(this);
   }
 
@@ -2257,7 +2257,7 @@ var StreamController = (function (_EventHandler) {
       if (this.fragLoadIdx !== undefined) {
         this.fragLoadIdx += 2 * this.config.fragLoadingLoopThreshold;
       }
-      this.seekingStalled = 13;
+      this.seekingStalled = this.config.stalledInBufferedNudgeThreshold;
       // tick to speed up processing
       this.tick();
     }
@@ -2677,6 +2677,7 @@ var StreamController = (function (_EventHandler) {
           // check buffer upfront
           // if less than jumpThreshold second is buffered, and media is expected to play but playhead is not moving,
           // and we have a new buffer range available upfront, let's seek to that one
+          var configSeekHoleNudgeDuration = this.config.seekHoleNudgeDuration;
           if (expectedPlaying && bufferInfo.len <= jumpThreshold) {
             if (playheadMoving) {
               // playhead moving
@@ -2690,7 +2691,7 @@ var StreamController = (function (_EventHandler) {
                 this.hls.trigger(_events2['default'].ERROR, { type: _errors.ErrorTypes.MEDIA_ERROR, details: _errors.ErrorDetails.BUFFER_STALLED_ERROR, fatal: false });
                 this.stalled = true;
               } else {
-                this.seekHoleNudgeDuration += this.config.seekHoleNudgeDuration;
+                this.seekHoleNudgeDuration += configSeekHoleNudgeDuration;
               }
             }
             // if we are below threshold, try to jump if next buffer range is close
@@ -2706,6 +2707,7 @@ var StreamController = (function (_EventHandler) {
                 this.hls.trigger(_events2['default'].ERROR, { type: _errors.ErrorTypes.MEDIA_ERROR, details: _errors.ErrorDetails.BUFFER_SEEK_OVER_HOLE, fatal: false });
               }
             }
+            this.stalledInBuffered = 0;
           } else {
             if (this.seekingStalled && !playheadMoving && bufferInfo.start === currentTime) {
               if (this.seekingStalled === 1) {
@@ -2714,6 +2716,14 @@ var StreamController = (function (_EventHandler) {
               } else {
                 this.seekingStalled--;
               }
+            } else if (expectedPlaying && !playheadMoving) {
+              this.stalledInBuffered++;
+              if (this.stalledInBuffered >= this.config.stalledInBufferedNudgeThreshold) {
+                this.stalledInBuffered = 0;
+                targetSeekPosition = currentTime + jumpThreshold;
+              }
+            } else {
+              this.stalledInBuffered = 0;
             }
             if (targetSeekPosition && media.currentTime !== targetSeekPosition) {
               _utilsLogger.logger.log('adjust currentTime from ' + media.currentTime + ' to ' + targetSeekPosition);
@@ -5884,6 +5894,7 @@ var Hls = (function () {
           maxBufferHole: 0.5,
           maxSeekHole: 2,
           seekHoleNudgeDuration: 0.01,
+          stalledInBufferedNudgeThreshold: 12,
           maxFragLookUpTolerance: 0.2,
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: Infinity,
