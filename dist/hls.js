@@ -2709,7 +2709,7 @@ var StreamController = (function (_EventHandler) {
             }
             this.stalledInBuffered = 0;
           } else {
-            if (this.seekingStalled && !playheadMoving && bufferInfo.start === currentTime) {
+            if (this.seekingStalled && !playheadMoving && currentTime >= bufferInfo.start) {
               if (this.seekingStalled === 1) {
                 this.seekingStalled = 0;
                 targetSeekPosition = currentTime + jumpThreshold;
