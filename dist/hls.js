@@ -2257,7 +2257,7 @@ var StreamController = (function (_EventHandler) {
       if (this.fragLoadIdx !== undefined) {
         this.fragLoadIdx += 2 * this.config.fragLoadingLoopThreshold;
       }
-      this.seekingStalled = this.config.stalledInBufferedNudgeThreshold;
+      this.seekingStalled = this.seekingStalled ? this.seekingStalled : 1;
       // tick to speed up processing
       this.tick();
     }
@@ -2710,12 +2710,14 @@ var StreamController = (function (_EventHandler) {
             this.stalledInBuffered = 0;
           } else {
             if (this.seekingStalled && !playheadMoving && currentTime >= bufferInfo.start) {
-              if (this.seekingStalled === 1) {
-                this.seekingStalled = 0;
-                targetSeekPosition = currentTime + jumpThreshold;
-              } else {
-                this.seekingStalled--;
+              if (this.seekingStalled / this.config.stalledInBufferedNudgeThreshold % 1 === 0) {
+                var seekingMultiply = Math.floor(this.seekingStalled / this.config.stalledInBufferedNudgeThreshold);
+                if (seekingMultiply > 3) {
+                  seekingMultiply = 3;
+                }
+                targetSeekPosition = currentTime + jumpThreshold * seekingMultiply;
               }
+              this.seekingStalled++;
             } else if (expectedPlaying && !playheadMoving) {
               this.stalledInBuffered++;
               if (this.stalledInBuffered >= this.config.stalledInBufferedNudgeThreshold) {
