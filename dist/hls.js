@@ -2709,7 +2709,7 @@ var StreamController = (function (_EventHandler) {
             }
             this.stalledInBuffered = 0;
           } else {
-            if (this.seekingStalled && !playheadMoving && currentTime >= bufferInfo.start && currentTime < bufferInfo.end) {
+            if (this.seekingStalled && !playheadMoving && currentTime >= bufferInfo.start && currentTime <= bufferInfo.end) {
               if (this.seekingStalled / this.config.stalledInBufferedNudgeThreshold % 1 === 0) {
                 var seekingMultiply = Math.floor(this.seekingStalled / this.config.stalledInBufferedNudgeThreshold);
                 if (seekingMultiply > 3) {
