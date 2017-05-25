@@ -5,6 +5,7 @@
 
  import DemuxerInline from '../demux/demuxer-inline';
  import Event from '../events';
+ import {enableLogs} from '../utils/logger';
  import EventEmitter from 'events';
 
 var DemuxerWorker = function (self) {
@@ -17,39 +18,58 @@ var DemuxerWorker = function (self) {
   observer.off = function off (event, ...data) {
     observer.removeListener(event, ...data);
   };
+
+  var forwardMessage = function(ev,data) {
+    self.postMessage({event: ev, data:data });
+  };
+
   self.addEventListener('message', function (ev) {
     var data = ev.data;
     //console.log('demuxer cmd:' + data.cmd);
     switch (data.cmd) {
       case 'init':
-        self.demuxer = new DemuxerInline(observer, data.id, data.typeSupported, JSON.parse(data.config));
+        let config = JSON.parse(data.config);
+        self.demuxer = new DemuxerInline(observer, data.typeSupported, config, data.vendor);
+        try {
+          enableLogs(config.debug === true);
+        } catch(err) {
+          console.warn('demuxerWorker: unable to enable logs');
+        }
+        // signal end of worker init
+        forwardMessage('init',null);
         break;
       case 'demux':
-        self.demuxer.push(new Uint8Array(data.data), data.audioCodec, data.videoCodec, data.timeOffset, data.cc, data.level, data.sn, data.duration);
+        self.demuxer.push(data.data, data.decryptdata, data.initSegment, data.audioCodec, data.videoCodec, data.timeOffset,data.discontinuity, data.trackSwitch,data.contiguous,data.duration,data.accurateTimeOffset,data.defaultInitPTS);
         break;
       default:
         break;
     }
   });
 
-  var forwardMessage = function(ev,data) {
-    self.postMessage({event: ev, data:data });
-  };
-
   // forward events to main thread
+  observer.on(Event.FRAG_DECRYPTED, forwardMessage);
   observer.on(Event.FRAG_PARSING_INIT_SEGMENT, forwardMessage);
   observer.on(Event.FRAG_PARSED, forwardMessage);
   observer.on(Event.ERROR, forwardMessage);
   observer.on(Event.FRAG_PARSING_METADATA, forwardMessage);
   observer.on(Event.FRAG_PARSING_USERDATA, forwardMessage);
+  observer.on(Event.INIT_PTS_FOUND, forwardMessage);
 
   // special case for FRAG_PARSING_DATA: pass data1/data2 as transferable object (no copy)
   observer.on(Event.FRAG_PARSING_DATA, function(ev, data) {
-    let data1 = data.data1.buffer, data2 = data.data2.buffer;
-    // remove data1 and data2 reference from data to avoid copying them ...
-    delete data.data1;
-    delete data.data2;
-    self.postMessage({event: ev, data:data , data1 : data1, data2 : data2},[data1, data2]);
+    let transferable = [];
+    let message = {event: ev, data:data};
+    if (data.data1) {
+      message.data1 = data.data1.buffer;
+      transferable.push(data.data1.buffer);
+      delete data.data1;
+    }
+    if (data.data2) {
+      message.data2 = data.data2.buffer;
+      transferable.push(data.data2.buffer);
+      delete data.data2;
+    }
+    self.postMessage(message,transferable);
   });
 };
 
